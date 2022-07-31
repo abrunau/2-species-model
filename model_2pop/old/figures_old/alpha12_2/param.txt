@@ -1,0 +1,33 @@
+
+beta = 3                      # encounter rate between patrolling males and virgin females
+d = 0.1                       # overall death rate 
+dlt_e = 0.01                  # energy linked death rate of patrolling males
+dlt_c = 0.01                  # density dependant competition death rate patrolling male
+offspring_number = 5          # mean offspring number per female per day 
+mu = 1/50                     # mutation rate of 
+
+# stability_treshold = 0.013  # defines a treshold for ha and wa under which ha and wa of males are considered in equilibrium
+lower = 0                     # used to bound drawing in truncated normal distributions
+upper = 1                     # """
+
+K1 = 500                      # carrying capacity of pop 1
+K2 = 500                      # carrying capacity of pop 2
+
+e1 = 0.25                     # peak emergence time pop 1
+e2 = 0.25                     # "" pop 2
+
+ve1 = 0.05                    # emergence time variance pop 1
+ve2 = 0.05                    # emergence time variance pop 2
+
+initial_ha1 = 0.25             # initial peak patrol time pop 1
+initial_ha2 = 0.25             # initial peak patrol time pop 2
+
+initial_wa1 = 0.05            # initial patrol time range pop 1
+initial_wa2 = 0.05            # initial patrol time range pop 2
+
+alpha12 = 2                   # aggressivity of 1 on 2
+alpha21 = 1                   # aggressivity of 2 on 1
+
+initial_abund_1 = 100
+initial_abund_2 = 100
+

@@ -1,0 +1,273 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun  8 09:43:27 2022
+
+@author: abrunaud
+"""
+
+
+import random as r
+import numpy as np
+import scipy.stats as stats
+
+
+########################## model global parameters #############################
+
+
+beta = 3                      # encounter rate between patrolling males and virgin females independant of species
+d = 0.1                       # death rate applied to whole population
+dlt_e = 0.01                  # energy linked death rate of patrolling males
+dlt_c = 0.01                  # density dependant competition death rate patrolling male
+offspring_number = 5          # mean offspring number per female per day 
+mu = 1/50                     # mutation size of patrolling window position AND width
+
+lower = 0                     # used to bound drawing in truncated normal distributions
+upper = 1                     # used to bound drawing in truncated normal distribution
+
+K = 1000                      # carrying capacity regarding competition between females for access to host plants to lay eggs
+
+e1 = 0.6                     # peak emergence time species 1
+e2 = 0.4                     # peak emergence time species 2
+
+ve1 = 0.05                    # emergence time variance species 1
+ve2 = 0.05                    # emergence time variance species 2
+
+initial_wa1 = 0.05            # initial patrol time width sp 1
+initial_wa2 = 0.05            # initial patrol time width sp 2
+
+alpha12 = 1                   # aggressivity of sp 1 on sp 2 (how much patrolling males of sp 1 intefere with patrolling with patrolling males of sp 2)
+alpha21 = 1                   # aggressivity of sp 2 on sp 1
+
+
+######################### individuals attributes ##############################
+
+
+class individuals:                           # Individuals in our population belongs to this class
+    def __init__(self, sex, ha, wa, f, sp):  # Each individual is defined by the following attributes :
+        self.sex = sex                       # Male or Female
+        self.ha = ha                         # patrolling window position (males)
+        self.wa = wa                         # patrolling window width (males)
+        self.f = f                           # fertilisation state 0 (virgin), 1 (within species), 2 (among species) 
+        self.sp = sp                         # belonging to a species, 1 ou 2 
+
+
+########### functions to obtain the population categories at time t ############
+
+
+def list_virgin_females(pop): # get a list of virgin females in the population
+    fem_v = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "F" and pop[i].f == 0:
+            fem_v.append(pop[i])
+    return(fem_v)
+
+def list_mated_females_1(pop): # get a list of mated females within species 1 in the population
+    fem_f1 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "F" and pop[i].f == 1 and pop[i].sp == 1:
+            fem_f1.append(pop[i])
+    return(fem_f1)
+
+def list_mated_females_2(pop): # get a list of mated females within species 2 in the population
+    fem_f2 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "F" and pop[i].f == 1 and pop[i].sp == 2:
+            fem_f2.append(pop[i])
+    return(fem_f2)
+
+def list_patrolling_males_1(pop,ti): # get a list of patrolling males in sp 1 at time "ti" in the population
+    mal_a1 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 1 and ((pop[i].ha - pop[i].wa) <= ti <= (pop[i].ha + pop[i].wa)):
+            mal_a1.append(pop[i])
+    return(mal_a1)
+
+def list_patrolling_males_2(pop,ti): # get a list of patrolling males in sp 2 at time "ti" in the population
+    mal_a2 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 2 and ((pop[i].ha - pop[i].wa) <= ti <= (pop[i].ha + pop[i].wa)):
+            mal_a2.append(pop[i])
+    return(mal_a2)
+
+def list_nonpatrolling_males(pop,ti): # get a list of non-patrolling males at time "ti" in the population, unregarding the species
+    mal_i = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and ((pop[i].ha - pop[i].wa) > ti 
+                                    or ti > (pop[i].ha + pop[i].wa)):
+            mal_i.append(pop[i])
+    return(mal_i)
+
+def list_non_fertile_females(pop): # get a list of mated females among species in the population
+    fem_nf = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "F" and pop[i].f == 2:
+            fem_nf.append(pop[i])
+    return(fem_nf)
+
+
+########################### time period cutting functions #####################
+
+
+def patrolling_schedule_males(pop):          # get a dictionary of hours of transition from non-patrolling to patrolling and vice versa for males of both sp
+    ht = {}                                  # dictionnaries allows us to link events with their associated time
+    for i in range(len(pop)): 
+        if pop[i].sex == "M":
+            if pop[i].ha - pop[i].wa < 0 :   # avoids to exit [0,1]
+                ht[0] = "entering male " + str(i)
+            else:
+                ht[pop[i].ha - pop[i].wa] = "entering male " + str(i) 
+            if pop[i].ha + pop[i].wa > 1 :   # avoids to exit [0,1]
+                ht[1] = "exiting male " + str(i)
+            else:
+                ht[pop[i].ha + pop[i].wa] = "exiting male " + str(i)  
+    return(ht)
+
+
+def emergences_and_schedule(pop):                               # return a list with all emergences of the day and a dictionnary of all emergences and their associated time 
+    b = offspring_number * (1-(len(list_mated_females_1(pop))+len(list_mated_females_2(pop)))/K) # number of offspring per female per day is density dependant depending on mated females
+    if b < 0 :
+        b = 0
+    emergence_list = []                                         # list of all emergences of the day
+    emergence_schedule = {}                                     # dict of emergence schedule of offsprings
+    for i in range(len(pop)): 
+        if pop[i].sex == "F" and pop[i].f == 1:
+            offsp = np.random.poisson(b)                        # drawing of the offpring number for each female
+            for j in range(offsp):                              
+                emergence_list.append(individuals(r.sample(["M","F"],1)[0],         # creation of new emerging individuals
+                                        stats.truncnorm.rvs((lower - pop[i].ha)/mu,(upper-pop[i].ha)/mu, pop[i].ha, mu), # emerging individual inherit the patrolling window position of their father
+                                        stats.truncnorm.rvs((lower - pop[i].wa)/mu,(upper-pop[i].wa)/mu, pop[i].wa, mu), # emerging individual inherit the patrolling window width of their father
+                                        0,                                                                               # emerging individual are virgins
+                                        pop[i].sp))                                                                      # emerging individual belong to the species of the parents
+    for k in range(len(emergence_list)):                        # drawing of emergence time for each new individual
+        if emergence_list[k].sp == 1:
+            emergence_schedule[stats.truncnorm.rvs((lower - e1)/ve1,(upper-e1)/ve1, e1, ve1)] = "emergence individu " + str(k) + emergence_list[k].sex
+        else:
+            emergence_schedule[stats.truncnorm.rvs((lower - e2)/ve2,(upper-e2)/ve2, e2, ve2)] = "emergence individu " + str(k) + emergence_list[k].sex
+    return(emergence_list,emergence_schedule)                   # returns emergence list AND emergence with associated time
+
+
+
+########################### event drawing #####################################
+
+
+def event(pop,ti, T):                                                   # determine if an event happens between ti and T, and chooses which one
+    nb_patrolling_males_1 = len(list_patrolling_males_1(pop,ti))        # calculating each population category abundance
+    nb_patrolling_males_2 = len(list_patrolling_males_2(pop,ti))
+    nb_nonpatrolling_males = len(list_nonpatrolling_males(pop,ti))
+    nb_virgin_females = len(list_virgin_females(pop))
+    nb_mated_females_1 = len(list_mated_females_1(pop))
+    nb_mated_females_2 = len(list_mated_females_2(pop))
+    nb_non_fertile_females = len(list_non_fertile_females(pop))
+    
+    lr = beta * (nb_patrolling_males_1 + nb_patrolling_males_2) * nb_virgin_females         # calculating lambda_r and lambda_d used in exponential law
+    ld = d * (nb_mated_females_1 + nb_mated_females_2 + nb_virgin_females + nb_patrolling_males_1 + nb_patrolling_males_2 + nb_nonpatrolling_males + nb_non_fertile_females) + dlt_e * (nb_patrolling_males_1 + nb_patrolling_males_2) + dlt_c * nb_patrolling_males_1 * (nb_patrolling_males_1 + alpha21 * nb_patrolling_males_2 - 1) + dlt_c * nb_patrolling_males_2 * (nb_patrolling_males_2 + alpha12 * nb_patrolling_males_1 - 1)
+    if lr + ld == 0:                                            # specific case if population go extinct
+        print("population extinct")                             # return t = 100 to indicate error
+    draw = np.random.exponential(1/(lr + ld))                   # drawing in exponential law of parameter lambda = lambda_r + lambda_d
+    if draw < T - ti:
+        uni = np.random.uniform(0,1)                            # drawing in unif(0,1) to set which event is happening
+        if uni < lr/(lr+ld):                                    # event : meeting between patrolling male and virgin female
+            father = r.sample(list_patrolling_males_1(pop,ti)+list_patrolling_males_2(pop,ti), 1)[0]  # father is randomly sampled among patrolling males of both species at time ti
+            mother = r.sample(list_virgin_females(pop),1)[0]    # mother is randomly sampled among virgin females of both species
+            if father.sp == mother.sp:
+                mother.f = 1                                    # mother becomes "mated within species"
+                mother.ha = father.ha                           # mother stores father's patrolling window position
+                mother.wa = father.wa                           # mother stores father's patrolling window width
+            else: 
+                mother.f = 2                                    # mother becomes "mated among species" when parents aren't from the same species
+        elif uni < (lr/(lr+ld)) + (d * nb_nonpatrolling_males)/(lr + ld):       # event : death of non-patrolling male
+            dead = r.sample(list_nonpatrolling_males(pop,ti),1)[0]              # the dead is radomly chosen among non-patrolling males at time ti
+            pop.remove(dead)
+        elif uni < (lr/(lr+ld)) + (d * (nb_nonpatrolling_males + nb_mated_females_1))/(lr+ld):    # event : death of mated female of species 1
+            dead = r.sample(list_mated_females_1(pop),1)[0]                                       # the dead is radomly chosen among mated females of species 1
+            pop.remove(dead)
+        elif uni < (lr/(lr+ld)) + (d * (nb_nonpatrolling_males + nb_mated_females_1 + nb_mated_females_2))/(lr+ld): # event : death of mated female of species 2
+            dead = r.sample(list_mated_females_2(pop),1)[0]                                                         # the dead is randomly chosen among mated females of species 2
+            pop.remove(dead)
+        elif uni < (lr/(lr+ld)) + (d * (nb_nonpatrolling_males + nb_mated_females_1 + nb_mated_females_2 + nb_non_fertile_females))/(lr+ld): # event : death of a mated among species female
+            dead = r.sample(list_non_fertile_females(pop),1)[0]
+            pop.remove(dead)
+        elif uni < (lr/(lr+ld)) + (d * (nb_nonpatrolling_males + nb_mated_females_1 + nb_mated_females_2 + nb_non_fertile_females + nb_virgin_females))/(lr+ld): # event : death of virgin female
+            dead = r.sample(list_virgin_females(pop),1)[0]
+            pop.remove(dead)
+        elif uni < (lr/(lr+ld)) + (d * (nb_nonpatrolling_males + nb_mated_females_1 + nb_mated_females_2 + nb_non_fertile_females + nb_virgin_females))/(lr+ld) + (d * nb_patrolling_males_1 + dlt_e * nb_patrolling_males_1 + dlt_c * nb_patrolling_males_1 * (nb_patrolling_males_1 + alpha21 * nb_patrolling_males_2 - 1))/(lr+ld): # event : death of patrolling male of species 1
+            dead = r.sample(list_patrolling_males_1(pop,ti),1)[0]
+            pop.remove(dead)
+        else:                                                   # event : death of patrolling male of species 2
+            dead = r.sample(list_patrolling_males_2(pop,ti),1)[0]
+            pop.remove(dead)
+        return(ti + draw)
+    else:
+        return(T)                                               # no event happens when the draw in exponential law falls after T - ti interval
+
+
+######################## simulation study #####################################
+
+
+def list_ha_of_males_sp1(pop): # get a list of patrolling window position of males of sp 1
+    mal1 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 1:
+            mal1.append(abs(pop[i].ha))
+    return(mal1)
+
+def list_ha_of_males_sp2(pop): # get a list of patrolling window position of males of sp 2
+    mal2 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 2:
+            mal2.append(abs(pop[i].ha))
+    return(mal2)
+
+def list_wa_of_males_sp1(pop): # get a list of patrolling window width of males of sp 1
+    mal3 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 1:
+            mal3.append(abs(pop[i].wa)) 
+    return(mal3)
+
+def list_wa_of_males_sp2(pop): # get a list of patrolling window width of males of sp 2
+    mal4 = []
+    for i in range(len(pop)): 
+        if pop[i].sex == "M" and pop[i].sp == 2:
+            mal4.append(abs(pop[i].wa)) 
+    return(mal4)
+
+def sex_ratio_sp1(pop): # get the sex ratio of sp1
+    m = 0
+    f = 0
+    for i in range(len(pop)):
+        if pop[i].sex == "M" and pop[i].sp == 1:
+            m += 1
+        elif pop[i].sex == "F" and pop[i].sp == 1:
+            f += 1
+        else:
+            pass
+    try :
+        result = f/(m+f)
+    except ZeroDivisionError:
+        result = "pop 1 extinct"
+    return(result)
+
+def sex_ratio_sp2(pop): # get the sex ratio of sp 2
+    m2 = 0
+    f2 = 0
+    for i in range(len(pop)):
+        if pop[i].sex == "M" and pop[i].sp == 2:
+            m2 += 1
+        elif pop[i].sex == "F" and pop[i].sp == 2:
+            f2 += 1
+        else:
+            pass
+    try :
+        result = f2/(m2+f2)
+    except ZeroDivisionError:
+        result = "pop 2 extinct"
+    return(result)
+
+def size_sp1_sp2(pop):
+    size_sp1 = 0
+    for i in range(len(pop)):
+        if pop[i].sp == 1:
+            size_sp1 += 1
+    return(size_sp1,len(pop)-size_sp1)
+
