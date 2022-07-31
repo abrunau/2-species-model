@@ -1,5 +1,6 @@
 """
 Created on Wed Jun  8 09:40:55 2022
+Updated for github
 
 @author: abrunaud
 """
@@ -21,7 +22,7 @@ plt.xlim(0,1)
 plt.ylim(0,70)
 #plt.axvline(e1,c="red",label = "peak emergence sp 1")
 #plt.axvline(e2,c="blue", label = "peak emergence sp 2")
-plt.ylabel("Nb of males")
+plt.ylabel("Number of males")
 plt.xlabel("Daily time")
 xe = np.linspace(0,1,1000)
 ye1 = (1 / (np.sqrt(2 * np.pi * np.power(ve1,2)))) * (np.power(np.e, -(np.power((xe-e1),2)/(2*np.power(ve1,2)))))
